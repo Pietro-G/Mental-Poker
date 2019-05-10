@@ -4,11 +4,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
-key = rsa.generate_private_key(
-    public_exponent=65537,
-    key_size=2048,
-    backend=default_backend())
-
 # So no two cards, when multiplied together, would generate
 # the encoding another card. This is just to be safe.
 def generate_encodings(size: int) -> [int]:
@@ -29,7 +24,7 @@ def encrypt(pub: rsa.RSAPublicKey, n: int) -> bytes:
     )
 
 
-def decrypt(pri: rsa.RSAPrivateKey, byte_n: bytes) -> n:
+def decrypt(pri: rsa.RSAPrivateKey, byte_n: bytes) -> int:
     encoded_n = pri.decrypt(
         byte_n,
         padding.OAEP(
