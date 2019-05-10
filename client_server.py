@@ -16,11 +16,7 @@ def runServer():
     Port = DEFAULT_PORT
     server.bind((IP_address, Port))
 
-    """
-        listens for 100 active connections. This number can be
-        increased as per convenience.
-        """
-    server.listen(100)
+    server.listen(2)
     print("Blackjack room is open.")
 
     list_of_clients = []
@@ -96,7 +92,6 @@ def runClient():
                 sys.stdout.write(message)
                 sys.stdout.flush()
     server.close()
-
 
 
 def onStartup():
