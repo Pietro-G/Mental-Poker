@@ -21,8 +21,20 @@ class KeyPair:
         self.n = p*q
         self.size = size
 
+    def __eq__(self, other):
+        return self.e == other.e\
+            and self.d == other.d\
+            and self.p == other.p\
+            and self.q == other.q\
+            and self.size == other.size
+
     def jsonify(self):
         return json.dumps(self.__dict__)
+
+    @staticmethod
+    def from_json(data: str) -> 'KeyPair':
+        data = json.loads(data)
+        return KeyPair(data['e'], data['d'], data['p'], data['q'], data['size'])
 
     @staticmethod
     def new_key_pair(size: int = 2048) -> 'KeyPair':
@@ -35,7 +47,7 @@ class KeyPair:
 
         return KeyPair(e, d, p, q, size)
 
-    def twin_pair(self, ed: (int, int) = None) -> KeyPair:
+    def generate_twin_pair(self, ed: (int, int) = None) -> 'KeyPair':
         if ed is None:
             phi = (self.p-1)*(self.q-1)
             e = ntheory.generate.randprime(1, phi)
@@ -43,6 +55,12 @@ class KeyPair:
         else:
             (e, d) = ed
         return KeyPair(e, d, self.p, self.q, self.size)
+
+    def reset_key(self, e: int = None):
+        if e is None:
+            phi = (self.p-1)*(self.q-1)
+            self.e = ntheory.generate.randprime(1, phi)
+        _, self.d = crypto.crypto.rsa_private_key(self.p, self.q, self.e)
 
     def encrypt(self, b: int) -> int:
         assert b <= 2**self.size
