@@ -1,36 +1,56 @@
-from sympy import sieve
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
+import json
+from sympy import sieve, ntheory, crypto
 
-# So no two cards, when multiplied together, would generate
-# the encoding another card. This is just to be safe.
 def generate_encodings(size: int) -> [int]:
+    '''
+    Generate the encodings for size number of cards.
+    We use prime numbers so when multiplied together,
+    no two cards would generate the encoding of a thrid card.
+    '''
     sieve._reset()
     sieve.extend_to_no(size)
     return list(sieve._list)
 
 
-def encrypt(pub: rsa.RSAPublicKey, n: int) -> bytes:
-    byte_n = n.to_bytes(16, 'big')
-    return pub.encrypt(
-        byte_n,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
+class KeyPair:
+    def __init__(self, e: int, d: int, p: int, q: int, size: int):
+        self.e = e
+        self.d = d
+        self.p = p
+        self.q = q
+        self.n = p*q
+        self.size = size
 
+    def jsonify(self):
+        return json.dumps(self.__dict__)
 
-def decrypt(pri: rsa.RSAPrivateKey, byte_n: bytes) -> int:
-    encoded_n = pri.decrypt(
-        byte_n,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return int.from_bytes(encoded_n, 'big')
+    @staticmethod
+    def new_key_pair(size: int = 2048) -> 'KeyPair':
+        half = size // 2
+        p = ntheory.generate.randprime(2**(half-1), 2**half)
+        q = ntheory.generate.randprime(2**(half-1), 2**half)
+        phi = (p-1)*(q-1)
+        e = ntheory.generate.randprime(1, phi)
+        _, d = crypto.crypto.rsa_private_key(p, q, e)
+
+        return KeyPair(e, d, p, q, size)
+
+    def twin_pair(self, ed: (int, int) = None) -> KeyPair:
+        if ed is None:
+            phi = (self.p-1)*(self.q-1)
+            e = ntheory.generate.randprime(1, phi)
+            _, d = crypto.crypto.rsa_private_key(self.p, self.q, e)
+        else:
+            (e, d) = ed
+        return KeyPair(e, d, self.p, self.q, self.size)
+
+    def encrypt(self, b: int) -> int:
+        assert b <= 2**self.size
+        return crypto.crypto.encipher_rsa(b, (self.n, self.e))
+
+    def decrypt(self, x: int) -> int:
+        assert x <= self.n
+        return crypto.crypto.decipher_rsa(x, (self.n, self.d))
+
+    def data_size(self) -> int:
+        return self.size // 8
