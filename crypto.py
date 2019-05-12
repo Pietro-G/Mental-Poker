@@ -37,11 +37,13 @@ class KeyPair:
         return KeyPair(data['e'], data['d'], data['p'], data['q'], data['size'])
 
     @staticmethod
-    def new_key_pair(p: int = None, q: int = None, size: int = 2048) -> 'KeyPair':
+    def new_key_pair(p: int = None, q: int = None, size: int = 1024) -> 'KeyPair':
         half = size // 2
-        if p is None:
+        p_ = p
+        if p_ is None:
             p_ = ntheory.generate.randprime(2**(half-1), 2**half)
-        if q is None:
+        q_ = q
+        if q_ is None:
             q_ = ntheory.generate.randprime(2**(half-1), 2**half)
         phi = (p_-1)*(q_-1)
         e = ntheory.generate.randprime(1, phi)

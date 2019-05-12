@@ -2,6 +2,7 @@ import asyncio
 import json
 from enum import Enum
 import aiohttp
+io = aiohttp.ClientSession()
 from crypto import generate_encodings
 from defs import *
 import logging
@@ -25,7 +26,7 @@ class NotAllowedException(BaseException):
 
 
 class Game:
-    def __init__(self, n_players: int):
+    def __init__(self, n_players: int, loop: asyncio.AbstractEventLoop):
         self.key_pair = crypto.KeyPair.new_key_pair()
 
         self.deck: [int] = generate_encodings(N_CARDS)
@@ -35,7 +36,9 @@ class Game:
         self.players: [Player] = []
         self.cur_player_i = 0
 
-        self.stage = Stage.Shuffling
+        self.stage = Stage.Waiting
+
+        self.loop = loop
 
     def cur_player(self) -> Player:
         return self.players[self.cur_player_i]
@@ -61,6 +64,7 @@ class Game:
 
         # If we have enough people
         if len(self.players) == self.n_players:
+            logging.info('Enough people. Start shuffling.')
             self.stage = Stage.Shuffling
             # Notice the first player that they need to do a shuffle
             self.notice_shuffle()
@@ -73,15 +77,17 @@ class Game:
         Also gives out the common p, q
         and the list of players
         """
-        asyncio.ensure_future(aiohttp.request(
+        logging.info('Noticing %s to shuffle', self.cur_player().name)
+        task = io.request(
             'SHUFFLE',
             self.cur_player().url(),
             data=json.dumps(
-                {'key_pair': self.key_pair,
+                {'p': self.key_pair.p,
+                 'q': self.key_pair.q,
                  'deck': self.deck,
                  'players': [player.name for player in self.players]
-                 })
-        ))
+                 }))
+        th_ensure_future(self.loop, task)
 
     def recv_shuffled(self, name: str, new_deck: [int]):
         """
@@ -107,11 +113,13 @@ class Game:
         """
         Give current player cards to encrypt
         """
-        asyncio.ensure_future(aiohttp.request(
+        logging.info('Noticing %s to encrypt', self.cur_player().name)
+        task = io.request(
             'ENCRYPT',
             self.cur_player().url(),
             data=json.dumps({'deck': self.deck})
-        ))
+        )
+        th_ensure_future(self.loop, task)
 
     def recv_encrypt(self, name: str, new_deck: [int]):
         """
@@ -126,18 +134,19 @@ class Game:
         if self.new_round():
             for player in self.players:
                 # Proceed to publish the deck
-                asyncio.ensure_future(aiohttp.request(
+                task = io.request(
                     'PUBLISH',
                     player.url(),
                     data=json.dumps(
                         {'deck': self.deck}
-                    )
-                ))
+                    ))
+                th_ensure_future(self.loop, task)
                 # Initialize the game (public the first 2*n keys)
-                asyncio.ensure_future(aiohttp.request(
+                task = io.request(
                     'INITIALIZE',
                     player.url()
-                ))
+                )
+                th_ensure_future(self.loop, task)
 
             # and let the first player play the game
             self.notice_play()
@@ -150,10 +159,11 @@ class Game:
         """
         Notice current player to make a decision
         """
-        asyncio.ensure_future(aiohttp.request(
+        task = io.request(
             'PLAY',
             self.cur_player().url()
-        ))
+        )
+        th_ensure_future(self.loop, task)
 
     def recv_played(self, name: str, decision: str, key: int):
         """
@@ -162,13 +172,13 @@ class Game:
         # Tell others what this player is doing
         for player in self.players:
             if player.name != name:
-                asyncio.ensure_future(aiohttp.request(
+                task = io.request(
                     'DECISION',
                     player.url(),
                     data=json.dumps(
                         {'key': key,
-                         'decision': decision})
-                ))
+                         'decision': decision}))
+                th_ensure_future(self.loop, task)
 
         self.next_player()
         self.notice_play()
@@ -180,13 +190,13 @@ class Game:
         """
         for player in self.players:
             if player.name != name:
-                asyncio.ensure_future(aiohttp.request(
+                task = io.request(
                     'REQUEST',
                     player.url(),
                     data=json.dumps(
                         {'from': name,
-                         'no': no})
-                ))
+                         'no': no}))
+                th_ensure_future(self.loop, task)
 
     def recv_release(self, name: str, no: int, key: int):
         """
@@ -195,11 +205,11 @@ class Game:
         """
         for player in self.players:
             if player.name != name:
-                asyncio.ensure_future(aiohttp.request(
+                task = io.request(
                     'RELEASE',
                     player.url(),
                     data=json.dumps(
                         {'name': name,
                          'no': no,
-                         'key': key})
-                ))
+                         'key': key}))
+                th_ensure_future(self.loop, task)

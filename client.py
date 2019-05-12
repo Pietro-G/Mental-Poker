@@ -1,7 +1,9 @@
 import asyncio
 import random
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer, HTTPStatus
 import aiohttp
+io = aiohttp.ClientSession()
 import requests
 import json
 import logging
@@ -13,15 +15,16 @@ logging.basicConfig(level=logging.INFO)
 from defs import *
 
 
+loop: asyncio.AbstractEventLoop = None
+
 class GameData:
-    def __init__(self, server_url: str, name: str, i: int):
+    def __init__(self, server_url: str, name: str):
         self.server_url = server_url
         self.name = name
         self.key_pair: crypto.KeyPair = None
         self.deck: [Card] = None
         self.card_keys: [crypto.KeyPair] = None
         self.players = dict()
-        self.i = i
 
     def analyze_player_list(self, l):
         for (i, player) in enumerate(l):
@@ -33,59 +36,66 @@ def HandlerFactory(data: GameData):
         def body_json(self):
             content_len = int(self.headers.get('Content-Length'))
             post_body = self.rfile.read(content_len)
-            return json.dumps(post_body)
+            return json.loads(post_body)
 
         def do_BROADCAST(self):
             print('Broadcast: %s' % self.body_json()['message'])
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
         def do_SHUFFLE(self):
+            logging.info('Received request to shuffle')
             body = self.body_json()
 
-            data.key_pair = crypto.KeyPair.from_json(body['key_pair']).generate_twin_pair()
+            data.key_pair = crypto.KeyPair.new_key_pair(body['p'], body['q'])
             data.analyze_player_list(body['players'])
             deck = body['deck']
 
             random.shuffle(deck)
-            for (i, card) in enumerate(data.deck):
+            for (i, card) in enumerate(deck):
                 deck[i] = data.key_pair.encrypt(card)
 
-            logging.info('Shuffled {} cards', len(deck))
+            logging.info('Shuffled %s cards', len(deck))
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
             # Send shuffled deck back
-            asyncio.ensure_future(aiohttp.request(
+            task = io.request(
                 'SHUFFLED',
                 data.server_url,
                 data=json.dumps(
                     {'name': data.name,
                      'deck': deck})
-            ))
+            )
+            th_ensure_future(loop, task)
 
         def do_ENCRYPT(self):
             deck = self.body_json()['deck']
 
             # Initialize individual keys
+            logging.info('Generating %s individual keys', len(deck))
             data.card_keys = [data.key_pair.generate_twin_pair() for _ in deck]
 
             encrypted_deck = []
             # Decrypt each card with the general key
             # then encrypt them with individual key
             for (key, card) in zip(data.card_keys, deck):
-                encrypted_deck.append(
-                    data.key_pair.decrypt(key.encrypt(card.encoding)))
+                processed_card = data.key_pair.decrypt(key.encrypt(card))
+                encrypted_deck.append(processed_card)
 
-            logging.info('Encrypted {} cards', len(deck))
+            logging.info('Encrypted %s cards', len(deck))
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
             # Send encrypted deck back
-            asyncio.ensure_future(aiohttp.request(
+            task = io.request(
                 'ENCRYPTED',
                 data.server_url,
                 data=json.dumps(
                     {'name': data.name,
                      'deck': deck})
-            ))
+            )
+            th_ensure_future(loop, task)
 
         def do_PUBLISH(self):
             """
@@ -96,20 +106,23 @@ def HandlerFactory(data: GameData):
             for (key, card) in zip(data.card_keys, data.deck):
                 card.decrypt(key)
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
         def do_INITIALIZE(self):
             # Release my key for the first 2*N_PLAYERS cards
             for i in range(2 * N_PLAYERS):
-                asyncio.ensure_future(aiohttp.request(
+                task = io.request(
                     'RELEASE',
                     data.server_url,
                     data=json.dumps(
                         {'name': data.name,
                          'no': i,
                          'key': data.card_keys[i].d})
-                ))
+                )
+                th_ensure_future(loop, task)
 
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
         def do_RELEASE(self):
             """
@@ -127,9 +140,11 @@ def HandlerFactory(data: GameData):
                 logging.log('We decrypt a card: %s (%s)', data.deck[no], no)
 
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
         def do_PLAY(self):
             self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
             # TODO print the situation here
 
@@ -144,14 +159,30 @@ def HandlerFactory(data: GameData):
     return Handler
 
 
+def get_open_port():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("", 0))
+    s.listen(1)
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
 DEFAULT_ADDR = "127.0.0.1"
-DEFAULT_PORT = 8123
+DEFAULT_PORT = get_open_port()
 
 
 def run_client():
     name = input('Your name: ')
-    server_addr = input('Server IP: ')
-    server_port = int(input('Server IP: '))
+    server_addr = input('Server IP [localhost]: ')
+    if server_addr == '':
+        server_addr = 'localhost'
+    server_port = input('Server IP [8123]: ')
+    if server_port == '':
+        server_port = 8123
+    else:
+        server_port = int(server_port)
     server_url = 'http://{}:{}/'.format(server_addr, server_port)
 
     # Try to join the party
@@ -165,20 +196,23 @@ def run_client():
     )
     if res.status_code != HTTPStatus.OK:
         logging.error(
-            "Can't join the room: [{}] {}",
+            "Can't join the room: [%s] %s",
             res.status_code,
             res.content
         )
         return
 
-    i = int(res.content)
-    logging.info('Joined the room as player {}!', i)
+    logging.info('Joined the room')
 
-    game_data = GameData(server_url, name, i)
+    game_data = GameData(server_url, name)
     httpd = HTTPServer((DEFAULT_ADDR, DEFAULT_PORT), HandlerFactory(game_data))
     logging.info('Callback server spinned up')
     httpd.serve_forever()
 
 
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+
+    threading.Thread(target=loop.run_forever).start()
+
     run_client()

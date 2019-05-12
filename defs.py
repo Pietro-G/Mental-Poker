@@ -1,5 +1,6 @@
 import crypto
 from enum import Enum
+import asyncio
 
 
 class Suit(Enum):
@@ -48,5 +49,11 @@ class Player:
         return 'http://{}:{}/{}'.format(ip, port, self.name)
 
 
+def th_ensure_future(loop: asyncio.AbstractEventLoop, task):
+    def f():
+        asyncio.ensure_future(task)
+    loop.call_soon_threadsafe(f)
+
+
 N_CARDS = 52
-N_PLAYERS = 3
+N_PLAYERS = 2
