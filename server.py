@@ -20,30 +20,39 @@ class Player:
     def finalize_deck(self):
         raise NotImplementedError()
 
+    #We have not used these notice functions yet
     def notice_shuffle(self):
-        message_to_send = "<" + addr[0] + "> " + " has shuffled"
+        #is the game.deck object already in list form?
+        message_to_send = {action: "shuffle", deck: game.deck}
         print(message_to_send)
         broadcast(message_to_send, conn)
     
     def notice_encrypt(self):
-        message_to_send = "<" + addr[0] + "> " + " has encrypted"
+        message_to_send = {action: "encrypt", deck: shuffled_deck}
         print(message_to_send)
         broadcast(message_to_send, conn)
     
     def shuffled(message):
         shuffled_deck = message['shuffled_deck']
-        game.shuffle(addr, shuffled_deck)
-        message_to_send = "<" + addr[0] + "> " + " has the shuffled deck"
-        broadcast(message_to_send, conn)
-        print(message_to_send)
-        return shuffled_deck
+        try:
+            game.recv_shuffle(addr, shuffled_deck)
+            message_to_send = "<" + addr[0] + "> " + " has the shuffled deck"
+            broadcast(message_to_send, conn)
+            print(message_to_send)
+            return shuffled_deck
+        except:
+            message_to_send = "<" + addr[0] + "> " + " IS TRYING TO CHEAT ITS NOT UR TURN TO SHUFFLE MATE"
     
     def encrypted(message):
         encrypted_deck = message['encrypted_deck']
-        message_to_send = "<" + addr[0] + "> " + " has the encrypted deck"
-        broadcast(message_to_send, conn)
-        print(message_to_send)
-        return encrypted_deck
+        try:
+            message_to_send = "<" + addr[0] + "> " + " has the encrypted deck"
+            broadcast(message_to_send, conn)
+            print(message_to_send)
+            return encrypted_deck
+        except:
+            message_to_send = "<" + addr[0] + "> " + " IS TRYING TO CHEAT ITS NOT UR TURN TO ENCRYPT MATE"
+
     
     def clientthread(conn, addr):
         # sends a message to the client whose user object is conn
