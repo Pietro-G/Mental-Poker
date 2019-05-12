@@ -33,11 +33,11 @@ class Player:
         conn.send(message_to_send)
 
     def notice_play(self):
+        #Choice should be either "Hit/Stay" for a particular player
         message_to_send = {action: "play", decision: choice}
         print(message_to_send)
         #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
         conn.send(message_to_send)
-
     def notice_approval(self, addr, key):
         message_to_send = {action: "approval", key = key, player_ip = addr}
         print(message_to_send)
