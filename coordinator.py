@@ -15,6 +15,9 @@ class NotAllowedException(BaseException):
 
 
 class Player:
+    def __init__(self, ip):
+        self.ip = ip
+
     def finalize_deck(self):
         raise NotImplementedError()
 
@@ -29,27 +32,28 @@ class Game:
 
         self.stage = Stage.Shuffling
 
-    def join(self, player: Player) -> int:
+    def cur_player_ip(self):
+        return self.players[self.cur_player].ip
+
+    def join(self, player: Player):
         if self.stage != Stage.Waiting:
             raise NotAllowedException()
-        i = self.cur_player
         self.players.append(player)
         self.cur_player += 1
         if self.cur_player == self.n_players:
             self.cur_player = 0
             self.stage == Stage.Shuffling
-        return i
 
-    def shuffle(self, player: int, new_deck: [int]):
-        if self.stage != Stage.Shuffling or self.cur_player != player:
+    def shuffle(self, player_ip: str, new_deck: [int]):
+        if self.stage != Stage.Shuffling or self.cur_player_ip() != player_ip:
             raise NotAllowedException()
         self.deck = new_deck
         self.cur_player = (self.cur_player+1) % self.n_players
         if self.cur_player == 0:
             self.stage = Stage.Encrypting
 
-    def encrypt(self, player: int, new_deck: [int]):
-        if self.stage != Stage.Encrypting or self.cur_player != player:
+    def encrypt(self, player_ip: str, new_deck: [int]):
+        if self.stage != Stage.Encrypting or self.cur_player_ip() != player_ip:
             raise NotAllowedException()
         self.deck = new_deck
         self.cur_player = (self.cur_player+1) % self.n_players
@@ -69,6 +73,6 @@ class Game:
         self.players[self.cur_player].deal()
         self.cur_player += 1
 
-    def report(self, player: int, card: Card):
+    def report(self, player_ip: str, card: Card):
         for other_player in self.players:
-            self.players[other_player].report_dealing(player, card)
+            self.players[other_player].report_dealing(player_ip, card)
