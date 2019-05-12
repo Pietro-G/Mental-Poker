@@ -38,6 +38,12 @@ class Player:
         #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
         conn.send(message_to_send)
     
+    def notice_approval(self, addr, key):
+        message_to_send = {action: "approval", key = key, player_ip = addr}
+        print(message_to_send)
+        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
+        conn.send(message_to_send)
+    
     def publish_deck(self, deck):
         message_to_send = {action: "publish", deck = deck}
         print(message_to_send)
@@ -46,6 +52,11 @@ class Player:
     
     def request_draw(message):
         game.recv_request_draw(addr)
+    
+    def receive_approval(message):
+        key = message['key']
+        game.recv_approval(addr, key)
+
     
     def shuffled(message):
         shuffled_deck = message['deck']
