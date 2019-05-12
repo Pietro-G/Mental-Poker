@@ -20,11 +20,6 @@ class Stage(Enum):
     Playing = 3
 
 
-class NotAllowedException(BaseException):
-    def __init__(self):
-        super().__init__('Not Allowed')
-
-
 class Game:
     def __init__(self, n_players: int, loop: asyncio.AbstractEventLoop):
         self.key_pair = crypto.KeyPair.new_key_pair()
@@ -177,6 +172,7 @@ class Game:
                     player.url(),
                     data=json.dumps(
                         {'key': key,
+                         'name': name,
                          'decision': decision}))
                 th_ensure_future(self.loop, task)
 

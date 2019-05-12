@@ -7,6 +7,7 @@ io = aiohttp.ClientSession()
 import requests
 import json
 import logging
+from defs import *
 
 import crypto
 
@@ -25,6 +26,8 @@ class GameData:
         self.deck: [Card] = None
         self.card_keys: [crypto.KeyPair] = None
         self.players = dict()
+
+        self.mechanics = None
 
     def analyze_player_list(self, l):
         for (i, player) in enumerate(l):
@@ -48,9 +51,11 @@ def HandlerFactory(data: GameData):
             body = self.body_json()
 
             data.key_pair = crypto.KeyPair.new_key_pair(body['p'], body['q'])
-            data.analyze_player_list(body['players'])
+            players = body['players']
+            data.analyze_player_list(players)
             deck = body['deck']
 
+            # Shuffle and encrypt the deck
             random.shuffle(deck)
             for (i, card) in enumerate(deck):
                 deck[i] = data.key_pair.encrypt(card)
@@ -75,6 +80,7 @@ def HandlerFactory(data: GameData):
             # Initialize individual keys
             logging.info('Generating %s individual keys', len(deck))
             data.card_keys = [data.key_pair.generate_twin_pair() for _ in deck]
+            logging.info('Cards are individually encrypted', len(deck))
 
             encrypted_deck = []
             # Decrypt each card with the general key
@@ -101,12 +107,15 @@ def HandlerFactory(data: GameData):
             """
             When the shuffled and ecrypted deck is published
             """
-            data.deck = [Card(None, None, e) for e in self.body_json()['deck']]
+            data.deck = [Card(e) for e in self.body_json()['deck']]
             # We can do our round of decryption now
             for (key, card) in zip(data.card_keys, data.deck):
                 card.decrypt(key)
             self.send_response(HTTPStatus.OK)
             self.end_headers()
+
+            # Initialize game mechanics
+            data.mechanics = Blackjack(data.players, data.deck)
 
         def do_INITIALIZE(self):
             # Release my key for the first 2*N_PLAYERS cards
@@ -138,11 +147,15 @@ def HandlerFactory(data: GameData):
             # If we have unlocked every padlock
             if data.deck[no].decrypt(decrypting_key):
                 logging.log('We decrypt a card: %s (%s)', data.deck[no], no)
+                data.mechanics.fully_decrypt(no)  # TODO implement this
 
             self.send_response(HTTPStatus.OK)
             self.end_headers()
 
         def do_PLAY(self):
+            """
+            It's my turn to play!
+            """
             self.send_response(HTTPStatus.OK)
             self.end_headers()
 
@@ -154,7 +167,34 @@ def HandlerFactory(data: GameData):
             raise NotImplementedError()
 
         def do_REQUEST(self):
-            raise NotImplementedError()
+            """
+            A player requests to see a card
+            """
+            body = self.body_json()
+            no = body['no']
+            # TODO implement check for access
+            if data.mechanics.has_access(body['from'], no):
+                task = io.request(
+                    'RELEASE',
+                    data.server_url,
+                    data=json.dumps(
+                        {'name': data.name,
+                         'no': no,
+                         'key': data.card_keys[no].d})
+                )
+                th_ensure_future(loop, task)
+
+        def do_DECISION(self):
+            """
+            A player made a play decision
+            """
+            body = self.body_json()
+            name = body['name']
+            try:
+                # TODO implement decision making
+                data.mechanics.decision(name, body['decision'], body['key'])
+            except NotAllowedException:
+                logging.info('%s is not allowed to make a decision now', name)
 
     return Handler
 

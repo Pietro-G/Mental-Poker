@@ -1,13 +1,10 @@
 import crypto
-from enum import Enum
 import asyncio
 
 
-class Suit(Enum):
-    Spade = 0
-    Heart = 1
-    Diamond = 2
-    Club = 3
+class NotAllowedException(BaseException):
+    def __init__(self):
+        super().__init__('Not Allowed')
 
 
 class Card:
@@ -15,9 +12,7 @@ class Card:
     A card with suit and rank (int of 1-13), and an encoding (its representation)
     """
 
-    def __init__(self, suit: Suit, rank: int, encoding: int):
-        self.suit = suit
-        self.rank = rank
+    def __init__(self, encoding: int):
         self.encoding = encoding
 
         self.value = self.get_value()
@@ -27,16 +22,18 @@ class Card:
     def get_value(self):
         raise NotImplementedError()
 
-    def decrypt(self, key: crypto.KeyPair):
+    def decrypt(self, key: crypto.KeyPair) -> bool:
         """
-        Decrypt with key with check for duplication
+        Decrypt with key with check for duplication.
+        Return True if this card has been fully decrypted.
         """
         if key.d not in self.seen_decrypting_key:
             self.encoding = key.decrypt(self.encoding)
             self.seen_decrypting_key.add(key.d)
-            if len(self.seen_decrypting_key) == N_PLAYERS:
-                raise NotImplementedError()
-                return True
+        return self.is_decrypted()
+
+    def is_decrypted(self):
+        return len(self.seen_decrypting_key) == N_CARDS
 
 
 class Player:

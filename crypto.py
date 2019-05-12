@@ -37,7 +37,7 @@ class KeyPair:
         return KeyPair(data['e'], data['d'], data['p'], data['q'], data['size'])
 
     @staticmethod
-    def new_key_pair(p: int = None, q: int = None, size: int = 1024) -> 'KeyPair':
+    def new_key_pair(p: int = None, q: int = None, size: int = 512) -> 'KeyPair':
         half = size // 2
         p_ = p
         if p_ is None:
