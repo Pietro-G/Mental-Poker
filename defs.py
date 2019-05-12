@@ -1,3 +1,4 @@
+import crypto
 from enum import Enum
 
 
@@ -20,8 +21,21 @@ class Card:
 
         self.value = self.get_value()
 
+        self.seen_decrypting_key = set()
+
     def get_value(self):
         raise NotImplementedError()
+
+    def decrypt(self, key: crypto.KeyPair):
+        """
+        Decrypt with key with check for duplication
+        """
+        if key.d not in self.seen_decrypting_key:
+            self.encoding = key.decrypt(self.encoding)
+            self.seen_decrypting_key.add(key.d)
+            if len(self.seen_decrypting_key) == N_PLAYERS:
+                raise NotImplementedError()
+                return True
 
 
 class Player:

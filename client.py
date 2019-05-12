@@ -12,14 +12,20 @@ logging.basicConfig(level=logging.INFO)
 
 from defs import *
 
+
 class GameData:
     def __init__(self, server_url: str, name: str, i: int):
         self.server_url = server_url
         self.name = name
         self.key_pair: crypto.KeyPair = None
         self.deck: [Card] = None
-        self.card_keys: [[crypto.KeyPair]] = None
+        self.card_keys: [crypto.KeyPair] = None
+        self.players = dict()
         self.i = i
+
+    def analyze_player_list(self, l):
+        for (i, player) in enumerate(l):
+            self.players[player] = i
 
 
 def HandlerFactory(data: GameData):
@@ -37,6 +43,7 @@ def HandlerFactory(data: GameData):
             body = self.body_json()
 
             data.key_pair = crypto.KeyPair.from_json(body['key_pair']).generate_twin_pair()
+            data.analyze_player_list(body['players'])
             deck = body['deck']
 
             random.shuffle(deck)
@@ -59,14 +66,12 @@ def HandlerFactory(data: GameData):
             deck = self.body_json()['deck']
 
             # Initialize individual keys
-            data.card_keys = [[None] * N_PLAYERS] * len(deck)
-            for key_list in data.card_keys:
-                key_list[0] = data.key_pair.generate_twin_pair()
+            data.card_keys = [data.key_pair.generate_twin_pair() for _ in deck]
 
             encrypted_deck = []
             # Decrypt each card with the general key
             # then encrypt them with individual key
-            for ([key], card) in zip(data.card_keys, deck):
+            for (key, card) in zip(data.card_keys, deck):
                 encrypted_deck.append(
                     data.key_pair.decrypt(key.encrypt(card.encoding)))
 
@@ -83,33 +88,61 @@ def HandlerFactory(data: GameData):
             ))
 
         def do_PUBLISH(self):
-            data.deck = self.body_json()['deck']
-            # We can totally do our round of decryption now
-            for (i, card) in data.deck:
-                data.deck[i] = data.card_keys[i][0].decrypt(card)
+            """
+            When the shuffled and ecrypted deck is published
+            """
+            data.deck = [Card(None, None, e) for e in self.body_json()['deck']]
+            # We can do our round of decryption now
+            for (key, card) in zip(data.card_keys, data.deck):
+                card.decrypt(key)
             self.send_response(HTTPStatus.OK)
 
         def do_INITIALIZE(self):
             # Release my key for the first 2*N_PLAYERS cards
-            for i in range(2*N_PLAYERS):
+            for i in range(2 * N_PLAYERS):
                 asyncio.ensure_future(aiohttp.request(
                     'RELEASE',
                     data.server_url,
                     data=json.dumps(
                         {'name': data.name,
                          'no': i,
-                         'key': data.card_keys[i][0].d})
+                         'key': data.card_keys[i].d})
                 ))
 
             self.send_response(HTTPStatus.OK)
 
         def do_RELEASE(self):
+            """
+            When somebody releases a key
+            """
             body = self.body_json()
+            no = body['no']
+
+            # Generate a decrypting key from this key received
+            decrypting_key = data.key_pair.generate_twin_pair((None, body['key']))
+
+            # Decrypt
+            # If we have unlocked every padlock
+            if data.deck[no].decrypt(decrypting_key):
+                logging.log('We decrypt a card: %s (%s)', data.deck[no], no)
+
+            self.send_response(HTTPStatus.OK)
+
+        def do_PLAY(self):
+            self.send_response(HTTPStatus.OK)
+
+            # TODO print the situation here
+
+            play = None
+            while play not in ('h', 's'):
+                play = input('[h]it / [s]tand: ')
             raise NotImplementedError()
 
-
+        def do_REQUEST(self):
+            raise NotImplementedError()
 
     return Handler
+
 
 DEFAULT_ADDR = "127.0.0.1"
 DEFAULT_PORT = 8123
@@ -145,6 +178,7 @@ def run_client():
     httpd = HTTPServer((DEFAULT_ADDR, DEFAULT_PORT), HandlerFactory(game_data))
     logging.info('Callback server spinned up')
     httpd.serve_forever()
+
 
 if __name__ == "__main__":
     run_client()

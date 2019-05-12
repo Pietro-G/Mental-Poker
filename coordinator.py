@@ -5,6 +5,7 @@ import aiohttp
 from crypto import generate_encodings
 from defs import *
 import logging
+
 logging.basicConfig(level=logging.INFO)
 
 import crypto
@@ -69,14 +70,17 @@ class Game:
     def notice_shuffle(self):
         """
         Notice the current player to shuffle.
+        Also gives out the common p, q
+        and the list of players
         """
         asyncio.ensure_future(aiohttp.request(
             'SHUFFLE',
             self.cur_player().url(),
             data=json.dumps(
                 {'key_pair': self.key_pair,
-                 'deck': self.deck}
-            )
+                 'deck': self.deck,
+                 'players': [player.name for player in self.players]
+                 })
         ))
 
     def recv_shuffled(self, name: str, new_deck: [int]):
