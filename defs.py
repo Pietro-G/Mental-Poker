@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class Suit(Enum):
     Spade = 0
     Heart = 1
@@ -23,4 +24,15 @@ class Card:
         raise NotImplementedError()
 
 
+class Player:
+    def __init__(self, name: str, addr: (str, int)):
+        self.name = name
+        self.addr = addr
+
+    def url(self):
+        (ip, port) = self.addr
+        return 'http://{}:{}/{}'.format(ip, port, self.name)
+
+
 N_CARDS = 52
+N_PLAYERS = 3

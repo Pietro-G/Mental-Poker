@@ -37,15 +37,17 @@ class KeyPair:
         return KeyPair(data['e'], data['d'], data['p'], data['q'], data['size'])
 
     @staticmethod
-    def new_key_pair(size: int = 2048) -> 'KeyPair':
+    def new_key_pair(p: int = None, q: int = None, size: int = 2048) -> 'KeyPair':
         half = size // 2
-        p = ntheory.generate.randprime(2**(half-1), 2**half)
-        q = ntheory.generate.randprime(2**(half-1), 2**half)
-        phi = (p-1)*(q-1)
+        if p is None:
+            p_ = ntheory.generate.randprime(2**(half-1), 2**half)
+        if q is None:
+            q_ = ntheory.generate.randprime(2**(half-1), 2**half)
+        phi = (p_-1)*(q_-1)
         e = ntheory.generate.randprime(1, phi)
-        _, d = crypto.crypto.rsa_private_key(p, q, e)
+        _, d = crypto.crypto.rsa_private_key(p_, q_, e)
 
-        return KeyPair(e, d, p, q, size)
+        return KeyPair(e, d, p_, q_, size)
 
     def generate_twin_pair(self, ed: (int, int) = None) -> 'KeyPair':
         if ed is None:
@@ -62,9 +64,9 @@ class KeyPair:
             self.e = ntheory.generate.randprime(1, phi)
         _, self.d = crypto.crypto.rsa_private_key(self.p, self.q, self.e)
 
-    def encrypt(self, b: int) -> int:
-        assert b <= 2**self.size
-        return crypto.crypto.encipher_rsa(b, (self.n, self.e))
+    def encrypt(self, pt: int) -> int:
+        assert pt <= 2**self.size
+        return crypto.crypto.encipher_rsa(pt, (self.n, self.e))
 
     def decrypt(self, x: int) -> int:
         assert x <= self.n

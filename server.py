@@ -1,134 +1,108 @@
+import asyncio
+from coordinator import Game, NotAllowedException
+from http.server import BaseHTTPRequestHandler, HTTPServer, HTTPStatus
+import aiohttp
+import json
+import logging
+logging.basicConfig(level=logging.INFO)
 
-import socket
-import select
-import sys
-import _thread
-import coordinator
+from defs import *
+
+
+def HandlerFactory(game):
+    class Handler(BaseHTTPRequestHandler):
+        def body_json(self):
+            content_len = int(self.headers.get('Content-Length'))
+            post_body = self.rfile.read(content_len)
+            return json.dumps(post_body)
+
+        def broadcast(self, s: str):
+            for player in game.players:
+                task = aiohttp.request(
+                    'BROADCAST',
+                    player.url(),
+                    data=json.dumps({'message': s}))
+                asyncio.ensure_future(task)
+
+        def do_JOIN(self):
+            """
+            A player wants to join the room.
+
+            Body format: { name: , port: }
+            IP is the same as this request is sent from.
+            """
+            try:
+                addr, _ = self.client_address
+                body = self.body_json()
+                player = Player(body['name'], (addr, body['port']))
+                game.join(player)
+            except NotAllowedException:
+                logging.log('Room full. Not allowed to join the game.')
+                self.send_response(HTTPStatus.FORBIDDEN, 'Room full. You are not allowed to join.')
+
+        def do_SHUFFLED(self):
+            """
+            A player has finished shuffling the deck.
+            """
+            try:
+                body = self.body_json()
+                game.recv_shuffled(body['name'], body['deck'])
+            except NotAllowedException:
+                msg = '<{} IS TRYING TO CHEAT ITS NOT UR TURN TO SHUFFLE MATE>'.format(body['name'])
+                self.broadcast(msg)
+
+        def do_ENCRYPTED(self):
+            """
+            A player has finished encrypting the deck.
+            """
+            try:
+                body = self.body_json()
+                game.recv_encrypt(body['name'], body['deck'])
+                message_to_send = '{} has encrypted the deck'.format(body['name'])
+                self.broadcast(message_to_send)
+            except NotAllowedException:
+                message_to_send = '{} IS TRYING TO CHEAT ITS NOT UR TURN TO ENCRYPT MATE'.format(body['name'])
+                self.broadcast(message_to_send)
+
+        def do_PLAYED(self):
+            """
+            A player has made a play decision.
+            """
+            try:
+                body = self.body_json()
+                game.recv_played(body['name'], body['decision'], body['key'])
+            except NotAllowedException:
+                message_to_send = '{} IS TRYING TO CHEAT ITS NOT UR TURN TO PLAY MATE'.format(body['name'])
+                self.broadcast(message_to_send)
+
+        def do_REQUEST(self):
+            """
+            Request to draw from a player.
+            """
+            body = self.body_json()
+            game.recv_request_draw(body['name'], body['no'])
+
+        def do_RELEASE(self):
+            """
+            A player is releasing a key
+            """
+            body = self.body_json()
+            game.recv_release(body['name'], body['no'], body['key'])
+
+    return Handler
 
 
 DEFAULT_ADDR = "127.0.0.1"
 DEFAULT_PORT = 8123
-game = coordinator.Game()
-
-class Player:
-    def __init__(self, ip):
-        self.ip = ip
-    
-    def start(self):
-        _thread.start_new_thread(clientthread,(conn,addr))
-    
-    def finalize_deck(self):
-        raise NotImplementedError()
-
-    def notice_shuffle(self):
-        message_to_send = {action: "shuffle", deck: game.deck}
-        print(message_to_send)
-        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
-        conn.send(message_to_send)
-    
-    def notice_encrypt(self):
-        message_to_send = {action: "encrypt", deck: shuffled_deck}
-        print(message_to_send)
-        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
-        conn.send(message_to_send)
-    
-    def notice_play(self):
-        message_to_send = {action: "play"}
-        print(message_to_send)
-        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
-        conn.send(message_to_send)
-    
-    def publish_deck(self, deck):
-        message_to_send = {action: "publish", deck = deck}
-        print(message_to_send)
-        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
-        conn.send(message_to_send)
-    
-    def request_draw(message):
-        game.recv_request_draw(addr)
-    
-    def shuffled(message):
-        shuffled_deck = message['deck']
-        try:
-            game.recv_shuffle(addr, shuffled_deck)
-            message_to_send = "<" + addr[0] + "> " + " has the shuffled deck"
-            broadcast(message_to_send, conn)
-            print(message_to_send)
-            return shuffled_deck
-        except:
-            message_to_send = "<" + addr[0] + "> " + " IS TRYING TO CHEAT ITS NOT UR TURN TO SHUFFLE MATE"
-    
-    def encrypted(message):
-        encrypted_deck = message['deck']
-        try:
-            message_to_send = "<" + addr[0] + "> " + " has the encrypted deck"
-            broadcast(message_to_send, conn)
-            print(message_to_send)
-            return encrypted_deck
-        except:
-            message_to_send = "<" + addr[0] + "> " + " IS TRYING TO CHEAT ITS NOT UR TURN TO ENCRYPT MATE"
-
-    
-    def clientthread(conn, addr):
-        conn.send("Welcome to Blackjack!".encode())
-        try:
-            game.join(coordinator.Player(addr))
-        except:
-            conn.send("Failure to join. Disconnecting.".encode())
-            remove(conn)
-        
-        while True:
-            try:
-                message = conn.recv(2048)
-                json.loads(message)
-                if message['action'] == 'shuffled':
-                    shuffled(message)
-                elif message['action'] == 'encrypted':
-                    encrypted(message)
-            except:
-                continue
 
 
-def runServer():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    
-    IP_address = DEFAULT_ADDR
-    Port = DEFAULT_PORT
-    server.bind((IP_address, Port))
-    
-    server.listen(3)
-    print("Blackjack room is open.")
-    
-    list_of_clients = []
-    
+def run_server():
+    game = Game(N_PLAYERS)
 
-    def broadcast(message, connection):
-        for clients in list_of_clients:
-            if clients!=connection:
-                try:
-                    clients.send(message)
-                except:
-                    clients.close()
-                    
-                    # if the link is broken, we remove the client
-                    remove(clients)
-    
-    def remove(connection):
-        if connection in list_of_clients:
-            list_of_clients.remove(connection)
+    httpd = HTTPServer((DEFAULT_ADDR, DEFAULT_PORT), HandlerFactory(game))
+    logging.info('Blackjack room is open')
+    httpd.serve_forever()
 
 
-    while True:
-        
-        conn, addr = server.accept()
-        list_of_clients.append(conn)
-
-        # prints the address of the user that just connected
-        print(addr[0] + " connected")
-            # creates and individual thread for every user
-        player = Player(addr)
-        player.start()
-    
-    conn.close()
-    server.close()
+if __name__ == '__main__':
+    run_server()
