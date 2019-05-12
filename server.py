@@ -35,7 +35,8 @@ def HandlerFactory(game):
                 addr, _ = self.client_address
                 body = self.body_json()
                 player = Player(body['name'], (addr, body['port']))
-                game.join(player)
+                i = game.join(player)
+                self.send_response(HTTPStatus.OK, str(i))
             except NotAllowedException:
                 logging.log('Room full. Not allowed to join the game.')
                 self.send_response(HTTPStatus.FORBIDDEN, 'Room full. You are not allowed to join.')
@@ -47,9 +48,11 @@ def HandlerFactory(game):
             try:
                 body = self.body_json()
                 game.recv_shuffled(body['name'], body['deck'])
+                self.send_response(HTTPStatus.OK)
             except NotAllowedException:
                 msg = '<{} IS TRYING TO CHEAT ITS NOT UR TURN TO SHUFFLE MATE>'.format(body['name'])
                 self.broadcast(msg)
+                self.send_response(HTTPStatus.FORBIDDEN)
 
         def do_ENCRYPTED(self):
             """
@@ -60,9 +63,11 @@ def HandlerFactory(game):
                 game.recv_encrypt(body['name'], body['deck'])
                 message_to_send = '{} has encrypted the deck'.format(body['name'])
                 self.broadcast(message_to_send)
+                self.send_response(HTTPStatus.OK)
             except NotAllowedException:
                 message_to_send = '{} IS TRYING TO CHEAT ITS NOT UR TURN TO ENCRYPT MATE'.format(body['name'])
                 self.broadcast(message_to_send)
+                self.send_response(HTTPStatus.FORBIDDEN)
 
         def do_PLAYED(self):
             """
@@ -88,6 +93,7 @@ def HandlerFactory(game):
             """
             body = self.body_json()
             game.recv_release(body['name'], body['no'], body['key'])
+            self.send_response(HTTPStatus.OK)
 
     return Handler
 

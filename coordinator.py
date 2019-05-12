@@ -54,6 +54,7 @@ class Game:
         """
         if self.stage != Stage.Waiting:
             raise NotAllowedException()
+        i = len(self.players)
         self.players.append(player)
         logging.info('Player %s %s joined the game.', player.name, player.addr)
 
@@ -62,6 +63,8 @@ class Game:
             self.stage = Stage.Shuffling
             # Notice the first player that they need to do a shuffle
             self.notice_shuffle()
+
+        return i
 
     def notice_shuffle(self):
         """
@@ -181,7 +184,7 @@ class Game:
                          'no': no})
                 ))
 
-    def recv_approval(self, name: str, no: int, key: int):
+    def recv_release(self, name: str, no: int, key: int):
         """
         Receive the approval to open the current top card.
         Simply relay it to every other server.
@@ -189,7 +192,7 @@ class Game:
         for player in self.players:
             if player.name != name:
                 asyncio.ensure_future(aiohttp.request(
-                    'APPROVAL',
+                    'RELEASE',
                     player.url(),
                     data=json.dumps(
                         {'name': name,
