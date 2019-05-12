@@ -23,17 +23,29 @@ class Player:
     def notice_shuffle(self):
         message_to_send = {action: "shuffle", deck: game.deck}
         print(message_to_send)
-        broadcast(message_to_send, conn)
+        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
+        conn.send(message_to_send)
     
     def notice_encrypt(self):
         message_to_send = {action: "encrypt", deck: shuffled_deck}
         print(message_to_send)
-        broadcast(message_to_send, conn)
+        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
+        conn.send(message_to_send)
     
     def notice_play(self):
         message_to_send = {action: "play"}
         print(message_to_send)
-        broadcast(message_to_send, conn)
+        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
+        conn.send(message_to_send)
+    
+    def publish_deck(self, deck):
+        message_to_send = {action: "publish", deck = deck}
+        print(message_to_send)
+        #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
+        conn.send(message_to_send)
+    
+    def request_draw(message):
+        game.recv_request_draw(addr)
     
     def shuffled(message):
         shuffled_deck = message['deck']
@@ -58,7 +70,6 @@ class Player:
 
     
     def clientthread(conn, addr):
-        # sends a message to the client whose user object is conn
         conn.send("Welcome to Blackjack!".encode())
         try:
             game.join(coordinator.Player(addr))
