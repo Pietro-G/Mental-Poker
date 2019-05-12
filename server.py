@@ -3,10 +3,12 @@ import socket
 import select
 import sys
 import _thread
+import coordinator
 
 
 DEFAULT_ADDR = "127.0.0.1"
 DEFAULT_PORT = 8123
+game = coordinator.Game()
 
 def runServer():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -24,6 +26,12 @@ def runServer():
     def clientthread(conn, addr):
         # sends a message to the client whose user object is conn
         conn.send("Welcome to Blackjack!".encode())
+        try:
+            game.join(coordinator.Player(addr))
+        except:
+            conn.send("Failure to join. Disconnecting.".encode())
+            remove(conn)
+    
         while True:
             try:
                 message = conn.recv(2048)
