@@ -20,8 +20,8 @@ class Player:
     def finalize_deck(self):
         raise NotImplementedError()
 
-    def notice_shuffle(self):
-        message_to_send = {action: "shuffle", deck: game.deck}
+    def notice_shuffle(self, p, q):
+        message_to_send = {action: "shuffle", deck: game.deck, p: p, q: q}
         print(message_to_send)
         #THIS MAY NEED NEED TO BE ENCODED BEFORE IT CAN BE SENT. UNSURE
         conn.send(message_to_send)
