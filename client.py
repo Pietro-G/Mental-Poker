@@ -151,7 +151,7 @@ DEFAULT_PORT = 8123
 def run_client():
     name = input('Your name: ')
     server_addr = input('Server IP: ')
-    server_port = int(input('Server IP: '))
+    server_port = int(input('Server Port: '))
     server_url = 'http://{}:{}/'.format(server_addr, server_port)
 
     # Try to join the party
