@@ -30,6 +30,11 @@ class Player:
         print(message_to_send)
         broadcast(message_to_send, conn)
     
+    def notice_play(self):
+        message_to_send = {action: "play"}
+        print(message_to_send)
+        broadcast(message_to_send, conn)
+    
     def shuffled(message):
         shuffled_deck = message['deck']
         try:
