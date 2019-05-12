@@ -5,6 +5,7 @@ import aiohttp
 import requests
 import json
 import logging
+import blackjack
 
 import crypto
 
@@ -129,13 +130,21 @@ def HandlerFactory(data: GameData):
             self.send_response(HTTPStatus.OK)
 
         def do_PLAY(self):
+            """
+            Checks the legality of every play, verifiable by other players
+            """
             self.send_response(HTTPStatus.OK)
 
-            # TODO print the situation here
+            choice = None
+            while choice not in ('h', 's'):
+                choice = input('[H]it / [S]tand: ').lower()
+                if (choice == 'h'):
+                    #TODO: Tell every other player about "h"
+                    blackjack.hit()
 
-            play = None
-            while play not in ('h', 's'):
-                play = input('[h]it / [s]tand: ')
+                elif (choice == 's'):
+                    #TODO: Tell every other player bout "s"
+
             raise NotImplementedError()
 
         def do_REQUEST(self):
