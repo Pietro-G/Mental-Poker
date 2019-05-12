@@ -20,9 +20,7 @@ class Player:
     def finalize_deck(self):
         raise NotImplementedError()
 
-    #We have not used these notice functions yet
     def notice_shuffle(self):
-        #is the game.deck object already in list form?
         message_to_send = {action: "shuffle", deck: game.deck}
         print(message_to_send)
         broadcast(message_to_send, conn)
