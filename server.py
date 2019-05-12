@@ -33,7 +33,7 @@ class Player:
         broadcast(message_to_send, conn)
     
     def shuffled(message):
-        shuffled_deck = message['shuffled_deck']
+        shuffled_deck = message['deck']
         try:
             game.recv_shuffle(addr, shuffled_deck)
             message_to_send = "<" + addr[0] + "> " + " has the shuffled deck"
@@ -44,7 +44,7 @@ class Player:
             message_to_send = "<" + addr[0] + "> " + " IS TRYING TO CHEAT ITS NOT UR TURN TO SHUFFLE MATE"
     
     def encrypted(message):
-        encrypted_deck = message['encrypted_deck']
+        encrypted_deck = message['deck']
         try:
             message_to_send = "<" + addr[0] + "> " + " has the encrypted deck"
             broadcast(message_to_send, conn)
