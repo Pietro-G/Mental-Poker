@@ -1,15 +1,15 @@
 import json
 from sympy import sieve, ntheory, crypto
 
+
 def generate_encodings(size: int) -> [int]:
-    '''
+    """
     Generate the encodings for size number of cards.
     We use prime numbers so when multiplied together,
-    no two cards would generate the encoding of a thrid card.
-    '''
-    sieve._reset()
+    no two cards would generate the encoding of a third card.
+    """
     sieve.extend_to_no(size)
-    return list(sieve._list)
+    return list(sieve._list[:size])
 
 
 class KeyPair:
@@ -18,15 +18,15 @@ class KeyPair:
         self.d = d
         self.p = p
         self.q = q
-        self.n = p*q
+        self.n = p * q
         self.size = size
 
     def __eq__(self, other):
-        return self.e == other.e\
-            and self.d == other.d\
-            and self.p == other.p\
-            and self.q == other.q\
-            and self.size == other.size
+        return self.e == other.e \
+               and self.d == other.d \
+               and self.p == other.p \
+               and self.q == other.q \
+               and self.size == other.size
 
     def jsonify(self):
         return json.dumps(self.__dict__)
@@ -41,11 +41,11 @@ class KeyPair:
         half = size // 2
         p_ = p
         if p_ is None:
-            p_ = ntheory.generate.randprime(2**(half-1), 2**half)
+            p_ = ntheory.generate.randprime(2 ** (half - 1), 2 ** half)
         q_ = q
         if q_ is None:
-            q_ = ntheory.generate.randprime(2**(half-1), 2**half)
-        phi = (p_-1)*(q_-1)
+            q_ = ntheory.generate.randprime(2 ** (half - 1), 2 ** half)
+        phi = (p_ - 1) * (q_ - 1)
         e = ntheory.generate.randprime(1, phi)
         _, d = crypto.crypto.rsa_private_key(p_, q_, e)
 
@@ -53,7 +53,7 @@ class KeyPair:
 
     def generate_twin_pair(self, ed: (int, int) = None) -> 'KeyPair':
         if ed is None:
-            phi = (self.p-1)*(self.q-1)
+            phi = (self.p - 1) * (self.q - 1)
             e = ntheory.generate.randprime(1, phi)
             _, d = crypto.crypto.rsa_private_key(self.p, self.q, e)
         else:
@@ -62,12 +62,12 @@ class KeyPair:
 
     def reset_key(self, e: int = None):
         if e is None:
-            phi = (self.p-1)*(self.q-1)
+            phi = (self.p - 1) * (self.q - 1)
             self.e = ntheory.generate.randprime(1, phi)
         _, self.d = crypto.crypto.rsa_private_key(self.p, self.q, self.e)
 
     def encrypt(self, pt: int) -> int:
-        assert pt <= 2**self.size
+        assert pt <= 2 ** self.size
         return crypto.crypto.encipher_rsa(pt, (self.n, self.e))
 
     def decrypt(self, x: int) -> int:

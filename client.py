@@ -3,12 +3,13 @@ import random
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer, HTTPStatus
 import aiohttp
+
 io = aiohttp.ClientSession()
 import requests
 import json
 import logging
 from defs import *
-import blackjack
+from blackjack import Blackjack
 
 import crypto
 
@@ -16,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 
 from defs import *
 
-
 loop: asyncio.AbstractEventLoop = None
+
 
 class GameData:
     def __init__(self, server_url: str, name: str):
@@ -26,17 +27,17 @@ class GameData:
         self.key_pair: crypto.KeyPair = None
         self.deck: [Card] = None
         self.card_keys: [crypto.KeyPair] = None
-        self.players = dict()
+        self.players: [str] = []
+        self.waiting_approval = False
 
-        self.mechanics = None
-
-    def analyze_player_list(self, l):
-        for (i, player) in enumerate(l):
-            self.players[player] = i
+        self.mechanics: Blackjack = None
 
 
 def HandlerFactory(data: GameData):
     class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return 'shhh'
+
         def body_json(self):
             content_len = int(self.headers.get('Content-Length'))
             post_body = self.rfile.read(content_len)
@@ -52,8 +53,8 @@ def HandlerFactory(data: GameData):
             body = self.body_json()
 
             data.key_pair = crypto.KeyPair.new_key_pair(body['p'], body['q'])
-            players = body['players']
-            data.analyze_player_list(players)
+            logging.info('Keys to use: %s, %s', body['p'], body['q'])
+            data.players = body['players']
             deck = body['deck']
 
             # Shuffle and encrypt the deck
@@ -81,13 +82,13 @@ def HandlerFactory(data: GameData):
             # Initialize individual keys
             logging.info('Generating %s individual keys', len(deck))
             data.card_keys = [data.key_pair.generate_twin_pair() for _ in deck]
-            logging.info('Cards are individually encrypted', len(deck))
+            logging.info('%s cards are individually encrypted', len(deck))
 
             encrypted_deck = []
             # Decrypt each card with the general key
             # then encrypt them with individual key
             for (key, card) in zip(data.card_keys, deck):
-                processed_card = data.key_pair.decrypt(key.encrypt(card))
+                processed_card = key.encrypt(data.key_pair.decrypt(card))
                 encrypted_deck.append(processed_card)
 
             logging.info('Encrypted %s cards', len(deck))
@@ -100,13 +101,13 @@ def HandlerFactory(data: GameData):
                 data.server_url,
                 data=json.dumps(
                     {'name': data.name,
-                     'deck': deck})
+                     'deck': encrypted_deck})
             )
             th_ensure_future(loop, task)
 
         def do_PUBLISH(self):
             """
-            When the shuffled and ecrypted deck is published
+            When the shuffled and encrypted deck is published
             """
             data.deck = [Card(e) for e in self.body_json()['deck']]
             # We can do our round of decryption now
@@ -116,11 +117,13 @@ def HandlerFactory(data: GameData):
             self.end_headers()
 
             # Initialize game mechanics
-            data.mechanics = Blackjack(data.players, data.deck)
+            data.mechanics = Blackjack(data.players, data.deck, data.key_pair)
 
         def do_INITIALIZE(self):
             # Release my key for the first 2*N_PLAYERS cards
             for i in range(2 * N_PLAYERS):
+                i = len(data.card_keys) - 1 - i
+                logging.info('Releasing card %s', i)
                 task = io.request(
                     'RELEASE',
                     data.server_url,
@@ -134,6 +137,36 @@ def HandlerFactory(data: GameData):
             self.send_response(HTTPStatus.OK)
             self.end_headers()
 
+        def play(self):
+            # If not our turn
+            if data.mechanics.players[data.mechanics.cur_player] != data.name:
+                return
+
+            choice, key_idx = data.mechanics.make_choice()
+            key = data.card_keys[key_idx]
+
+            # tell everyone our choice
+            task = io.request(
+                'PLAYED',
+                data.server_url,
+                data=json.dumps(
+                    {'name': data.name,
+                     'decision': choice,
+                     'key': key.d if choice == 'h' else None})
+            )
+            th_ensure_future(loop, task)
+
+            task = io.request(
+                'REQUEST',
+                data.server_url,
+                data=json.dumps(
+                    {'name': data.name,
+                     'no': key_idx})
+            )
+            th_ensure_future(loop, task)
+
+            data.waiting_approval = choice == 'h'
+
         def do_RELEASE(self):
             """
             When somebody releases a key
@@ -141,17 +174,19 @@ def HandlerFactory(data: GameData):
             body = self.body_json()
             no = body['no']
 
+            self.send_response(HTTPStatus.OK)
+            self.end_headers()
+
             # Generate a decrypting key from this key received
             decrypting_key = data.key_pair.generate_twin_pair((None, body['key']))
 
             # Decrypt
             # If we have unlocked every padlock
             if data.deck[no].decrypt(decrypting_key):
-                logging.log('We decrypt a card: %s (%s)', data.deck[no], no)
-                data.mechanics.fully_decrypt(no)  # TODO implement this
-
-            self.send_response(HTTPStatus.OK)
-            self.end_headers()
+                logging.info('We decrypt a card: %s (%s)', str(data.deck[no]), no)
+                data.mechanics.print_situation()
+                if data.waiting_approval:
+                    threading.Thread(target=self.play).start()
 
         def do_PLAY(self):
             """
@@ -161,17 +196,7 @@ def HandlerFactory(data: GameData):
             self.send_response(HTTPStatus.OK)
             self.end_headers()
 
-            choice = None
-            while choice not in ('h', 's'):
-                choice = input('[H]it / [S]tand: ').lower()
-                if (choice == 'h'):
-                    #TODO: Tell every other player about "h"
-                    blackjack.hit()
-
-                elif (choice == 's'):
-                    #TODO: Tell every other player bout "s"
-
-            raise NotImplementedError()
+            threading.Thread(target=self.play).start()
 
         def do_REQUEST(self):
             """
@@ -179,7 +204,6 @@ def HandlerFactory(data: GameData):
             """
             body = self.body_json()
             no = body['no']
-            # TODO implement check for access
             if data.mechanics.has_access(body['from'], no):
                 task = io.request(
                     'RELEASE',
@@ -190,6 +214,11 @@ def HandlerFactory(data: GameData):
                          'key': data.card_keys[no].d})
                 )
                 th_ensure_future(loop, task)
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
+            else:
+                self.send_response(HTTPStatus.FORBIDDEN)
+                self.end_headers()
 
         def do_DECISION(self):
             """
@@ -198,9 +227,12 @@ def HandlerFactory(data: GameData):
             body = self.body_json()
             name = body['name']
             try:
-                # TODO implement decision making
                 data.mechanics.decision(name, body['decision'], body['key'])
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
             except NotAllowedException:
+                self.send_response(HTTPStatus.FORBIDDEN)
+                self.end_headers()
                 logging.info('%s is not allowed to make a decision now', name)
 
     return Handler

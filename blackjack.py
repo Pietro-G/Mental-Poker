@@ -3,153 +3,126 @@ import random
 import crypto
 from defs import *
 
+
 class Blackjack:
-    def __init__(self, players, deck):
-        self.deck = crypto.generate_encodings(N_CARDS)
-        #Generate encoding for every card in the deck
-        actual_deck = [1,2,3,4,5,6,7,8,9,10,11,12,13]*4
-        self.encoding_mapping = dict()
-        for (card, encoding) in zip(actual_deck, crypto.generate_encodings(N_CARDS)):
-            encoding_mapping[encoding] = card
-        self.hand = []
-        self.dealer_hand = [] #Dealer is Alice (first arbitrary player in room) by default
-        self.player_hands = []
-        self.players = players #Received from do_SHUFFLE in client.py
+    def __init__(self, players, deck, key_pair):
+        self.deck: [Card] = deck
+        self.deck_top = len(self.deck) - 1
 
-    def resetDeck():
-        actual_deck = [1,2,3,4,5,6,7,8,9,10,11,12,13]*4
+        # Dealer is Alice (first arbitrary player in room) by default
+        self.player_hands: [[Card]] = [[] for _ in players]
+        self.players = players
 
-    def deal(self): #Client
-        random.shuffle(actual_deck)
-        card = actual_deck.pop()
-        if card == 1:
-            card = "A"
-        if card == 11:
-            card = "J"
-        if card == 12:
-            card = "Q"
-        if card ==13:
-            card = "K"
-        self.hand.append(card)
-        return self.hand
+        # Each player is dealt with two cards
+        for i, name in enumerate(players):
+            self.player_hands[i].append(self.deck[self.deck_top])
+            self.deck_top -= 1
+            self.player_hands[i].append(self.deck[self.deck_top])
+            self.deck_top -= 1
 
-    def play_again(self): #Client
-        replay = input("Do you want play again (Y/N): ").lower()
-        if replay == "y":
-            self.dealer_hand = []
-            self.player_hand = []
-        resetDeck()
-        playGame()
-        else:
-            print("Thanks for playing")
-            exit()
+        self.cur_player = 0
 
-    def total(self):
+        self.key_pair = key_pair
+
+    def make_choice(self):
+        self.print_situation()
+        choice = None
+        while choice not in ('h', 's'):
+            choice = input('\u001b[47m\u001b[30m[H]it / [S]tand: \u001b[0m\n').lower()
+        key_idx = self.deck_top
+        self.decision(self.players[self.cur_player], choice, None)
+        return choice, key_idx
+
+    def total_score(self, player):
+        """
+        Calculate the total
+        """
         total = 0
-        for card in self.hand:
-            if card == "J" or card == "Q" or card == "K":
-                total+=10
-            elif card == "A":
+        for card in self.player_hands[player]:
+            try:
+                rk = card.rank_name()
+            except NotAllowedException:
+                return '?'
+            # JQK
+            if rk in 'JQK':
+                total += 10
+            # A
+            elif rk == 'A':
                 if total < 11:
-                    total+= 11
+                    total += 11
                 else:
-                    total+=1
+                    total += 1
             else:
-                total += card
-
+                total += int(rk)
         return total
 
-    def hit(self):
-        card = actual_deck.pop()
-        if card == 1:
-            card = "A"
-        if card == 11:
-            card = "J"
-        if card == 12:
-            card = "Q"
-        if card == 13:
-            card = "K"
-        self.hand.append(card)
+    def decision(self, player_name: str, decision: str, key: int):
+        """
+        When some player makes a decision
+        """
+        if self.players[self.cur_player] != player_name:
+            raise NotAllowedException()
+        if decision == 'h':
+            card = self.deck[self.deck_top]
+            self.player_hands[self.cur_player].append(card)
+            self.deck_top -= 1
 
-    def clear():
-        if os.name == 'nt':
-            os.system('CLS')
-        if os.name == 'posix':
-            os.system('clear')
+            if key is not None:
+                decrypting_key = self.key_pair.generate_twin_pair((None, key))
+                if card.decrypt(decrypting_key):
+                    self.print_situation()
 
-    def print_results(dealer_hand, player_hands):
-        clear()
-        print( "The " + self.players[0] "has hand: " + str(dealer_hand) + " for a total of: " +str(total(dealer_hand)))
-        for idx, player_hand in enumerate(player_hands):
-            print(self.player[idx] + " has a " + str(player_hand) + " for a total of: " + str(total(player_hand)) + "\n")
+            self.check_blackjack()
+            self.check_bust()
+        elif decision == 's':
+            self.cur_player = self.cur_player + 1
+            if self.cur_player == len(self.players):
+                self.score()
+        else:
+            raise Exception('Sanity check WTF')
 
-    def checkBlackJack(dealer_hand, player_hands):
-        for idx, player_hand in enumerate(player_hands):
-            if total(player_hand) == 21:
-                print_results(dealer_hand, player_hands)
-            print( self.player[idx] + " has Blackjack!\n")
-            play_again()
+    def print_situation(self):
+        for idx, name in enumerate(self.players):
+            print('%s has hand: %s for a total of %s'
+                  % (name,
+                     ''.join([str(c) for c in self.player_hands[idx]]),
+                     self.total_score(idx)))
 
-        if total(dealer_hand) == 21:
-            print_results(dealer_hand, player_hand)
-            print ( self.player[0] + " got Blackjack. \n")
-            play_again()
+    def check_blackjack(self):
+        for idx, name in enumerate(self.players):
+            if self.total_score(idx) == 21:
+                print(name + " has Blackjack!")
+                self.print_situation()
+                self.play_again()
 
-    def checkBust(dealer_hand, player_hands):
-        for idx, player_hand in enumerate(player_hands):
-            if total(player_hand) > 21:
-                print_results(dealer_hand, player_hand)
-                print( self.player[idx] " Bust. \n")
-            play_again()
+    def check_bust(self):
+        for idx, name in enumerate(self.players):
+            score = self.total_score(idx)
+            if isinstance(score, int) and score > 21:
+                print(name + " bust!")
+                if idx == 0:
+                    print('Other players won!')
+                    self.print_situation()
+                    self.play_again()
 
-        if total(dealer_hand) > 21:
-            print_results(dealer_hand, player_hand)
-            print( self.player[0] + " Bust, other players won\n")
-            play_again()
+    def score(self):
+        """
+        In case of no blackjack/bust, score the hands
+        """
+        high_idx = None
+        high_score = -1
 
-    def score(dealer_hand, player_hands):
-        for idx, player_hand in enumerate(player_hands):
-            if total(player_hand) > total(dealer_hand):
-                print_results(dealer_hand, player_hand)
-                print(self.player[idx] + " has a higher score, Player wins\n")
-            elif total(player_hand) < total (dealer_hand):
-                print_results(dealer_hand, player_hand)
-                print(self.player[0] + "  has a higher score, Dealer wins\n")
-            elif total(player_hand) == total(dealer_hand)):
-                pritn_results()
-                print("Ties goes to the house's dealer, " + self.player[0] + " wins")
-                play_again()
+        for idx, name in enumerate(self.players):
+            score = self.total_score(idx)
+            if score > high_score:
+                high_idx = idx
+                high_score = score
 
-    #This function plays a local human vs streotipical dealer blackjack game instance
-    def playGame():
-        choice = 0
-        clear()
-        print("Welcome to Blackjack\n")
-        dealer_hand = deal(actual_deck)
-        player_hand = deal(actual_deck)
-        hit(player_hand)
-        hit(dealer_hand)
-        while choice != "q":
-            print("The dealer is showing a: " + str(dealer_hand[0]))
-            print("You have a: " + str(player_hand) + " for a total of: " + str(total(player_hand)))
-            checkBlackJack(dealer_hand, player_hand)
-            choice = input("Do you want to [H]it, [S]tand, or [Q]uit: ").lower()
-            clear()
-            if choice == "h":
-                hit(player_hand)
-                print_results(dealer_hand,player_hand)
-                if(checkBust(dealer_hand,player_hand)):
-                    choice == "q"
-            elif choice == "s":
-                while total(dealer_hand) < total(player_hand):
-                    hit(dealer_hand)
-                    checkBust(dealer_hand, player_hand)
-                    print_results(dealer_hand,player_hand)
-            elif choice == "q":
-                play_again()
-                print("Bye!")
-                exit()
-                
-    #Left for legacy purposes
-    if __name__ == "__main__":
-        playGame()
+        print('%s wins with %s score'.format(self.players[high_idx], high_score))
+        self.play_again()
+
+    def has_access(self, name, no):
+        return self.deck_top <= no
+
+    def play_again(self):
+        self.__init__(self.players, self.deck, self.key_pair)

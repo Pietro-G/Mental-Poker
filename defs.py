@@ -1,10 +1,19 @@
 import crypto
+import os
 import asyncio
+
+N_CARDS = 52
+N_PLAYERS = 2
 
 
 class NotAllowedException(BaseException):
     def __init__(self):
         super().__init__('Not Allowed')
+
+
+encoding_idx_mapping = dict()
+for i, encoding in enumerate(crypto.generate_encodings(N_CARDS)):
+    encoding_idx_mapping[encoding] = i
 
 
 class Card:
@@ -14,13 +23,7 @@ class Card:
 
     def __init__(self, encoding: int):
         self.encoding = encoding
-
-        self.value = self.get_value()
-
         self.seen_decrypting_key = set()
-
-    def get_value(self):
-        raise NotImplementedError()
 
     def decrypt(self, key: crypto.KeyPair) -> bool:
         """
@@ -33,7 +36,30 @@ class Card:
         return self.is_decrypted()
 
     def is_decrypted(self):
-        return len(self.seen_decrypting_key) == N_CARDS
+        return len(self.seen_decrypting_key) == N_PLAYERS
+
+    def rank_name(self):
+        rk = self.index() // 4
+        if rk == 1-1:
+            return "A"
+        elif rk == 11-1:
+            return "J"
+        elif rk == 12-1:
+            return "Q"
+        elif rk == 13-1:
+            return "K"
+        return str(rk)
+
+    def index(self):
+        if not self.is_decrypted():
+            raise NotAllowedException()
+        return encoding_idx_mapping[self.encoding]
+
+    def __str__(self):
+        if not self.is_decrypted():
+            return '?'
+        suite = '♠♥♦♣'[self.index() % 4]
+        return suite + self.rank_name()
 
 
 class Player:
@@ -49,8 +75,12 @@ class Player:
 def th_ensure_future(loop: asyncio.AbstractEventLoop, task):
     def f():
         asyncio.ensure_future(task)
+
     loop.call_soon_threadsafe(f)
 
 
-N_CARDS = 52
-N_PLAYERS = 2
+def clear():
+    if os.name == 'nt':
+        os.system('CLS')
+    if os.name == 'posix':
+        os.system('clear')

@@ -91,6 +91,7 @@ class Game:
         if self.stage != Stage.Shuffling or self.cur_player().name != name:
             raise NotAllowedException()
 
+        logging.info('Player %s shuffled the cards', name)
         self.deck = new_deck
         self.next_player()
 

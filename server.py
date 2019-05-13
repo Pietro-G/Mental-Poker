@@ -84,9 +84,13 @@ def HandlerFactory(game: Game):
             try:
                 body = self.body_json()
                 game.recv_played(body['name'], body['decision'], body['key'])
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
             except NotAllowedException:
                 message_to_send = '{} IS TRYING TO CHEAT ITS NOT UR TURN TO PLAY MATE'.format(body['name'])
                 self.broadcast(message_to_send)
+                self.send_response(HTTPStatus.FORBIDDEN)
+                self.end_headers()
 
         def do_REQUEST(self):
             """
@@ -94,6 +98,8 @@ def HandlerFactory(game: Game):
             """
             body = self.body_json()
             game.recv_request_draw(body['name'], body['no'])
+            self.send_response(HTTPStatus.OK)
+            self.end_headers()
 
         def do_RELEASE(self):
             """
