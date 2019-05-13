@@ -11,6 +11,12 @@ class NotAllowedException(BaseException):
         super().__init__('Not Allowed')
 
 
+class NewGameException(BaseException):
+    def __init__(self, last_decision):
+        super().__init__('New Game')
+        self.last_decision = last_decision
+
+
 encoding_idx_mapping = dict()
 for i, encoding in enumerate(crypto.generate_encodings(N_CARDS)):
     encoding_idx_mapping[encoding] = i

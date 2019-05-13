@@ -13,7 +13,7 @@ from blackjack import Blackjack
 
 import crypto
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 
 from defs import *
 
@@ -117,7 +117,7 @@ def HandlerFactory(data: GameData):
             self.end_headers()
 
             # Initialize game mechanics
-            data.mechanics = Blackjack(data.players, data.deck, data.key_pair)
+            data.mechanics = Blackjack(data.players, data.deck, data.key_pair, data.name)
 
         def do_INITIALIZE(self):
             # Release my key for the first 2*N_PLAYERS cards
@@ -137,12 +137,42 @@ def HandlerFactory(data: GameData):
             self.send_response(HTTPStatus.OK)
             self.end_headers()
 
+        def restart(self):
+            for i in range(data.mechanics.deck_top + 2 * N_PLAYERS, data.mechanics.deck_top, -1):
+                logging.info('Releasing card %s', i)
+                task = io.request(
+                    'RELEASE',
+                    data.server_url,
+                    data=json.dumps(
+                        {'name': data.name,
+                         'no': i,
+                         'key': data.card_keys[i].d})
+                )
+                th_ensure_future(loop, task)
+
+            data.waiting_approval = False
+            threading.Thread(target=self.play).start()
+
         def play(self):
             # If not our turn
             if data.mechanics.players[data.mechanics.cur_player] != data.name:
                 return
 
-            choice, key_idx = data.mechanics.make_choice()
+            try:
+                choice, key_idx = data.mechanics.make_choice()
+            except NewGameException as e:
+                # tell everyone our choice
+                task = io.request(
+                    'PLAYED',
+                    data.server_url,
+                    data=json.dumps(
+                        {'name': data.name,
+                         'decision': e.last_decision,
+                         'key': None})
+                )
+                th_ensure_future(loop, task)
+                return self.restart()
+
             key = data.card_keys[key_idx]
 
             # tell everyone our choice
@@ -155,6 +185,7 @@ def HandlerFactory(data: GameData):
                      'key': key.d if choice == 'h' else None})
             )
             th_ensure_future(loop, task)
+            self.restart()
 
             task = io.request(
                 'REQUEST',
@@ -182,9 +213,15 @@ def HandlerFactory(data: GameData):
 
             # Decrypt
             # If we have unlocked every padlock
+            prev_decrypted = data.deck[no].is_decrypted()
             if data.deck[no].decrypt(decrypting_key):
-                logging.info('We decrypt a card: %s (%s)', str(data.deck[no]), no)
-                data.mechanics.print_situation()
+                if not prev_decrypted:
+                    logging.info('We decrypt a card: %s (%s)', str(data.deck[no]), no)
+                    data.mechanics.print_situation()
+                try:
+                    data.mechanics.check_all('s')
+                except NewGameException:
+                    return self.restart()
                 if data.waiting_approval:
                     threading.Thread(target=self.play).start()
 
@@ -227,9 +264,15 @@ def HandlerFactory(data: GameData):
             body = self.body_json()
             name = body['name']
             try:
-                data.mechanics.decision(name, body['decision'], body['key'])
                 self.send_response(HTTPStatus.OK)
                 self.end_headers()
+                try:
+                    data.mechanics.decision(name, body['decision'], body['key'])
+                except NewGameException:
+                    return self.restart()
+                # My turn
+                if data.mechanics.players[data.mechanics.cur_player] == data.name:
+                    threading.Thread(target=self.play).start()
             except NotAllowedException:
                 self.send_response(HTTPStatus.FORBIDDEN)
                 self.end_headers()

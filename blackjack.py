@@ -5,7 +5,7 @@ from defs import *
 
 
 class Blackjack:
-    def __init__(self, players, deck, key_pair):
+    def __init__(self, players, deck, key_pair, local_player):
         self.deck: [Card] = deck
         self.deck_top = len(self.deck) - 1
 
@@ -21,6 +21,7 @@ class Blackjack:
             self.deck_top -= 1
 
         self.cur_player = 0
+        self.local_player = local_player
 
         self.key_pair = key_pair
 
@@ -28,10 +29,14 @@ class Blackjack:
         self.print_situation()
         choice = None
         while choice not in ('h', 's'):
-            choice = input('\u001b[47m\u001b[30m[H]it / [S]tand: \u001b[0m\n').lower()
+            choice = input().lower()
         key_idx = self.deck_top
         self.decision(self.players[self.cur_player], choice, None)
         return choice, key_idx
+
+    def check_all(self, last_decision):
+        self.check_bust(last_decision)
+        self.check_blackjack(last_decision)
 
     def total_score(self, player):
         """
@@ -72,40 +77,40 @@ class Blackjack:
                 if card.decrypt(decrypting_key):
                     self.print_situation()
 
-            self.check_blackjack()
-            self.check_bust()
+            self.check_all(decision)
         elif decision == 's':
             self.cur_player = self.cur_player + 1
             if self.cur_player == len(self.players):
-                self.score()
+                self.score(decision)
         else:
-            raise Exception('Sanity check WTF')
+            raise Exception('Sanity check')
+        self.print_situation()
 
     def print_situation(self):
+        clear()
         for idx, name in enumerate(self.players):
             print('%s has hand: %s for a total of %s'
                   % (name,
                      ''.join([str(c) for c in self.player_hands[idx]]),
                      self.total_score(idx)))
+        print('Turn of ' + self.players[self.cur_player])
+        if self.players[self.cur_player] == self.local_player:
+            print('\u001b[47m\u001b[30m[H]it / [S]tand: \u001b[0m\n')
 
-    def check_blackjack(self):
+    def check_blackjack(self, last_decision):
         for idx, name in enumerate(self.players):
             if self.total_score(idx) == 21:
-                print(name + " has Blackjack!")
-                self.print_situation()
-                self.play_again()
+                input(name + " has Blackjack!")
+                self.play_again(last_decision)
 
-    def check_bust(self):
+    def check_bust(self, last_decision):
         for idx, name in enumerate(self.players):
             score = self.total_score(idx)
             if isinstance(score, int) and score > 21:
-                print(name + " bust!")
-                if idx == 0:
-                    print('Other players won!')
-                    self.print_situation()
-                    self.play_again()
+                input(name + " bust!")
+                self.play_again(last_decision)
 
-    def score(self):
+    def score(self, last_decision):
         """
         In case of no blackjack/bust, score the hands
         """
@@ -118,11 +123,20 @@ class Blackjack:
                 high_idx = idx
                 high_score = score
 
-        print('%s wins with %s score'.format(self.players[high_idx], high_score))
-        self.play_again()
+        print('%s wins with %s score' % (self.players[high_idx], high_score))
+        self.play_again(last_decision)
 
     def has_access(self, name, no):
-        return self.deck_top <= no
+        return no > self.deck_top
 
-    def play_again(self):
-        self.__init__(self.players, self.deck, self.key_pair)
+    def play_again(self, last_decision):
+        self.player_hands: [[Card]] = [[] for _ in self.players]
+        for i, name in enumerate(self.players):
+            self.player_hands[i].append(self.deck[self.deck_top])
+            self.deck_top -= 1
+            self.player_hands[i].append(self.deck[self.deck_top])
+            self.deck_top -= 1
+
+        self.cur_player = 0
+
+        raise NewGameException(last_decision)
