@@ -100,14 +100,14 @@ class Blackjack:
     def check_blackjack(self, last_decision):
         for idx, name in enumerate(self.players):
             if self.total_score(idx) == 21:
-                input(name + " has Blackjack!")
+                print(name + " has Blackjack!")
                 self.play_again(last_decision)
 
     def check_bust(self, last_decision):
         for idx, name in enumerate(self.players):
             score = self.total_score(idx)
             if isinstance(score, int) and score > 21:
-                input(name + " bust!")
+                print(name + " bust!")
                 self.play_again(last_decision)
 
     def score(self, last_decision):
