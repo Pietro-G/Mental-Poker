@@ -25,6 +25,8 @@ class Blackjack:
 
         self.key_pair = key_pair
 
+        self.prev_msg = ''
+
     def make_choice(self):
         self.print_situation()
         choice = None
@@ -86,28 +88,32 @@ class Blackjack:
             raise Exception('Sanity check')
         self.print_situation()
 
-    def print_situation(self):
+    def print_situation(self, over=False):
         clear()
+        print(self.prev_msg)
         for idx, name in enumerate(self.players):
             print('%s has hand: %s for a total of %s'
                   % (name,
                      ''.join([str(c) for c in self.player_hands[idx]]),
                      self.total_score(idx)))
-        print('Turn of ' + self.players[self.cur_player])
-        if self.players[self.cur_player] == self.local_player:
-            print('\u001b[47m\u001b[30m[H]it / [S]tand: \u001b[0m\n')
+        if not over:
+            print('Turn of ' + self.players[self.cur_player])
+            if self.players[self.cur_player] == self.local_player:
+                print('\u001b[47m\u001b[30m[H]it / [S]tand: \u001b[0m\n')
 
     def check_blackjack(self, last_decision):
         for idx, name in enumerate(self.players):
             if self.total_score(idx) == 21:
-                print(name + " has Blackjack!")
+                self.prev_msg = name + " has Blackjack!"
+                self.print_situation(True)
                 self.play_again(last_decision)
 
     def check_bust(self, last_decision):
         for idx, name in enumerate(self.players):
             score = self.total_score(idx)
             if isinstance(score, int) and score > 21:
-                print(name + " bust!")
+                self.prev_msg = name + " bust!"
+                self.print_situation(True)
                 self.play_again(last_decision)
 
     def score(self, last_decision):
@@ -123,7 +129,8 @@ class Blackjack:
                 high_idx = idx
                 high_score = score
 
-        print('%s wins with %s score' % (self.players[high_idx], high_score))
+        self.prev_msg = '%s wins with %s score' % (self.players[high_idx], high_score)
+        self.print_situation(True)
         self.play_again(last_decision)
 
     def has_access(self, name, no):

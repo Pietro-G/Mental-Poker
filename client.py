@@ -296,7 +296,9 @@ DEFAULT_PORT = get_open_port()
 
 
 def run_client():
-    name = input('Your name: ')
+    name = ''
+    while name == '':
+        name = input('Your name: ')
     server_addr = input('Server IP [localhost]: ')
     if server_addr == '':
         server_addr = 'localhost'
@@ -306,6 +308,8 @@ def run_client():
     else:
         server_port = int(server_port)
     server_url = 'http://{}:{}/'.format(server_addr, server_port)
+
+    print('Waiting for others...')
 
     # Try to join the party
     res = requests.request(
